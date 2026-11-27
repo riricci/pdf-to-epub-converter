@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Convertitore minimo LaTeX -> MathML (presentation) per il sottoinsieme usato
-nelle dispense: frazioni, apici/pedici, \\left...\\right, \\underbrace, \\tilde,
-\\text, \\begin{aligned}, simboli e lettere greche comuni."""
+"""Minimal LaTeX -> MathML (presentation) converter for the subset used in the
+lecture notes: fractions, sub/superscripts, \\left...\\right, \\underbrace, \\tilde,
+\\text, \\begin{aligned}, common symbols and Greek letters."""
 import html
 import re
 
@@ -60,7 +60,7 @@ class P:
         return x
 
     def group_raw(self):
-        """testo grezzo di {...}"""
+        """raw text of {...}"""
         assert self.next() == "{"
         depth, out = 1, []
         while True:
@@ -110,7 +110,7 @@ class P:
             else:
                 sup = self.arg()
         if base.startswith("<munder") and (sub is not None):
-            # \underbrace{...}_{testo}
+            # \underbrace{...}_{text}
             return f"<munder>{base}{sub}</munder>"
         if sub is not None and sup is not None:
             return f"<msubsup>{base}{sub}{sup}</msubsup>"
@@ -155,7 +155,7 @@ class P:
                 raw = self.group_raw()
                 if c == "mathrm":
                     return f'<mi mathvariant="normal">{esc(raw)}</mi>'
-                # gli spazi ai bordi di \text{} verrebbero ignorati: si usano spazi non separabili
+                # spaces at the edges of \text{} would be dropped: use non-breaking spaces
                 raw = re.sub(r"^ +| +$", lambda m: "\u00a0" * len(m.group(0)), raw)
                 return f"<mtext>{esc(raw)}</mtext>"
             if c in ("mathcal", "mathscr"):
@@ -251,7 +251,7 @@ class P:
 
 
 def upright_label(m):
-    """pedici fatti solo di lettere latine (V_{CE}, I_B) -> etichetta in tondo"""
+    """subscripts made only of Latin letters (V_{CE}, I_B) -> upright label"""
     parts = re.findall(r"<m[in]>([A-Za-z]|[0-9]+)</m[in]>", m)
     if any(p.isalpha() for p in parts) and re.fullmatch(r"(?:<mrow>)?(?:<m[in]>(?:[A-Za-z]|[0-9]+)</m[in]>)+(?:</mrow>)?", m):
         return f'<mi mathvariant="normal">{"".join(parts)}</mi>'

@@ -1175,9 +1175,9 @@ class Converter:
                    "page": pno + 1}
             ref = find_noteref(lines, num)
             if ref is None and pno > 0:
-                ref_where = "assente"
+                ref_where = "missing"
             else:
-                ref_where = "trovato"
+                ref_where = "found"
             if ref is not None:
                 ref[0].c = f"{NOTE_OPEN}{nid}|{num}{NOTE_CLOSE}"
                 for x in ref[1:]:
@@ -1783,7 +1783,13 @@ def xhtml(title, body):
             f'<body>\n{body}\n</body>\n</html>\n')
 
 
+# navigation labels written into the EPUB, by language: (table of contents, cover)
+LABELS = {"it": ("Indice", "Copertina"), "en": ("Contents", "Cover"), "de": ("Inhalt", "Umschlag"),
+          "fr": ("Table des matières", "Couverture"), "es": ("Índice", "Portada")}
+
+
 def write_epub(blocks, images, cover_png, out, meta):
+    toc_label, cover_label = LABELS.get(meta.get("lang", PF.lang), LABELS["en"])
     chapters = []   # (title, [html lines], [(level, id, title)])
     hid = 0
     for b in blocks:
@@ -1824,7 +1830,7 @@ def write_epub(blocks, images, cover_png, out, meta):
     spine = ['<itemref idref="cover" linear="yes"/>']
     z.writestr("OEBPS/img/cover.png", cover_png, **zc)
     z.writestr("OEBPS/cover.xhtml", xhtml(meta["title"],
-               '<div style="text-align:center"><img src="img/cover.png" alt="Copertina" style="max-width:100%;max-height:100%"/></div>'), **zc)
+               f'<div style="text-align:center"><img src="img/cover.png" alt="{cover_label}" style="max-width:100%;max-height:100%"/></div>'), **zc)
     for name, data in images.items():
         mt = {"png": "image/png", "gif": "image/gif", "svg": "image/svg+xml"}.get(name.rsplit(".", 1)[-1], "image/jpeg")
         manifest.append(f'<item id="i_{name.replace(".", "_")}" href="img/{name}" media-type="{mt}"/>')
@@ -1862,7 +1868,7 @@ def write_epub(blocks, images, cover_png, out, meta):
             return ""
         return "<ol>" + "".join(
             f'<li><a href="{html.escape(x["href"])}">{html.escape(x["t"])}</a>{ol(x["kids"])}</li>' for x in nodes) + "</ol>"
-    z.writestr("OEBPS/nav.xhtml", xhtml("Indice", f'<nav epub:type="toc" id="toc"><h1>Indice</h1>{ol(nav_items)}</nav>'), **zc)
+    z.writestr("OEBPS/nav.xhtml", xhtml(toc_label, f'<nav epub:type="toc" id="toc"><h1>{toc_label}</h1>{ol(nav_items)}</nav>'), **zc)
     ncx = "".join(f'<navPoint id="n{o}" playOrder="{o}"><navLabel><text>{html.escape(t)}</text></navLabel>'
                   f'<content src="{html.escape(h)}"/></navPoint>' for o, t, h in ncx_points)
     z.writestr("OEBPS/toc.ncx", '<?xml version="1.0" encoding="utf-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
@@ -1971,7 +1977,7 @@ def main():
             "pages_with_control_chars": dict(sorted(rep["ctrl"].items())),
             "headings_not_found_on_page": rep["missing_headings"],
             "footnotes": len(rep["notes"]),
-            "footnotes_without_reference": [x for x in rep["notes"] if x[2] != "trovato"]})
+            "footnotes_without_reference": [x for x in rep["notes"] if x[2] != "found"]})
     write_epub(blocks, images, covers[0], out, {"title": meta_title, "authors": authors,
                                                 "publisher": a.publisher, "lang": PF.lang})
     summary = reports[0] if len(reports) == 1 else {"documents": reports}

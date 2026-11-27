@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Estrae dalle slide (PDF esportati da PowerPoint):
-  - le figure (raster + vettoriali + etichette vicine) come PNG ritagliati
-  - contact sheet 2x2 con numeri slide e riquadri delle figure (per la revisione)
-  - un indice JSON delle figure
+"""Extract from slides (PDFs exported by PowerPoint):
+  - the figures (raster + vector + nearby labels) as cropped PNGs
+  - 2x2 contact sheets with slide numbers and figure boxes (for review)
+  - a JSON index of the figures
 
-Uso: slides_extract.py OUTDIR deck1.pdf [deck2.pdf ...]
+Usage: slides_extract.py OUTDIR deck1.pdf [deck2.pdf ...]
 """
 import fitz, json, os, re, sys
 
-FRAME_MIN = 700          # rettangolo di sfondo della slide (39,11,803,584)
-MIN_W, MIN_H = 40, 30    # dimensione minima di una figura (pt)
+FRAME_MIN = 700          # slide background rectangle (39,11,803,584)
+MIN_W, MIN_H = 40, 30    # minimum figure size (pt)
 FIG_ZOOM = 2.5
-# ritocchi manuali per figura (coordinate in pt della slide):
+# manual per-figure fixes (slide coordinates in pt):
 #   {"1-168-1": {"mask": [[x0,y0,x1,y1], ...], "clip": [x0,y0,x1,y1]}}
 OVERRIDES = {}
 ARIAL = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
@@ -41,11 +41,11 @@ def merge(rects, tol):
 
 
 def text_spans(page):
-    """(rect, testo, is_prose): prosa = Comic Sans / Cambria Math in corpo grande."""
+    """(rect, text, is_prose): prose = Comic Sans / Cambria Math at a large size."""
     out = []
     for b in page.get_text("dict")["blocks"]:
         for l in b.get("lines", []):
-            # se nella riga c'è prosa, anche i pedici/apici della riga sono prosa
+            # if the line holds prose, its sub/superscripts are prose too
             line_prose = any(sp["size"] >= 19 and ("Comic" in sp["font"] or "Cambria" in sp["font"])
                              and sp["text"].strip() for sp in l["spans"])
             ltext = "".join(sp["text"] for sp in l["spans"]).strip()
@@ -55,7 +55,7 @@ def text_spans(page):
                 if not t:
                     continue
                 r = fitz.Rect(s["bbox"])
-                if t.isdigit() and r.y0 > 470 and r.x0 > 600:   # numero di pagina
+                if t.isdigit() and r.y0 > 470 and r.x0 > 600:   # page number
                     out.append((r, t, True, s))
                     continue
                 f = s["font"]
@@ -84,7 +84,7 @@ def figure_regions(page):
     rects = [r for r in rects if r.width >= MIN_W and r.height >= MIN_H]
     if not rects:
         return []
-    # etichette: span corti vicini o sovrapposti
+    # labels: short spans near or over the figure
     spans, prose = [], []
     for sr, t, is_prose, _ in text_spans(page):
         (prose if is_prose else spans).append((sr, t))
@@ -120,7 +120,7 @@ def main():
         clean = fitz.open(path)
         for i, page in enumerate(doc):
             rs = figure_regions(page)
-            # figure aggiuntive definite solo nei ritocchi manuali
+            # extra figures defined only in the manual fixes
             k = len(rs) + 1
             while "clip" in OVERRIDES.get(f"{deck}-{i+1:03d}-{k}", {}):
                 rs.append(fitz.Rect(OVERRIDES[f"{deck}-{i+1:03d}-{k}"]["clip"]))
@@ -138,7 +138,7 @@ def main():
                     if is_prose and not label_in_clip:
                         cp.add_redact_annot(sr, fill=False)
                     elif "Comic" in sp["font"]:
-                        # etichetta in Comic Sans: la si riscrive in Arial
+                        # Comic Sans label: redraw it in Arial
                         cp.add_redact_annot(sr, fill=False)
                         relabel.append(sp)
                 cp.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
@@ -161,7 +161,7 @@ def main():
                 pix.save(os.path.join(figdir, fid + ".png"))
                 index[fid] = [round(v, 1) for v in r]
             regs[i] = rs
-        # contact sheet 2x2 con riquadri
+        # 2x2 contact sheet with figure boxes
         W, H = 842 * 0.9, 595 * 0.9
         n = doc.page_count
         for start in range(0, n, 4):
@@ -180,7 +180,7 @@ def main():
                 pg.insert_text((x + 4, y + H - 6), f"{deck}-{i+1}", fontsize=16, color=(0.8, 0, 0.8))
                 pg.draw_rect(box, color=(0.6, 0.6, 0.6), width=0.5)
             pg.get_pixmap(dpi=72).save(os.path.join(sheetdir, f"{deck}-{start+1:03d}.png"))
-        print(path, n, "slide,", sum(len(v) for v in regs.values()), "figure")
+        print(path, n, "slides,", sum(len(v) for v in regs.values()), "figures")
     with open(os.path.join(out, "figure.json"), "w") as f:
         json.dump(index, f, indent=0)
 

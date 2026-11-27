@@ -1,75 +1,75 @@
 # pdf-to-epub-converter
 
-Converte PDF scientifici in EPUB3 leggibili su e-reader (Apple Books, Kobo, Calibre…).
-Funziona con libri, articoli a una o due colonne e slide, senza regolazioni per il singolo
-documento: lo script misura il PDF prima di convertirlo.
+Turns scientific PDFs into EPUB3 books that read well on e-readers (Apple Books, Kobo,
+Calibre…). It handles books, articles in one or two columns, and slide decks with no
+per-document tuning: the script measures each PDF before converting it.
 
-## Uso
+## Usage
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-# un libro o un articolo
-.venv/bin/python scripts/pdf2epub.py libro.pdf libro.epub
+# a book or an article
+.venv/bin/python scripts/pdf2epub.py book.pdf book.epub
 
-# più PDF in un unico EPUB, un capitolo per PDF (es. le slide di un corso)
-.venv/bin/python scripts/pdf2epub.py 1-intro.pdf 2-giunzione.pdf corso.epub --title "Corso" --authors "Nome Cognome"
+# several PDFs in one EPUB, one chapter per PDF (e.g. the slides of a course)
+.venv/bin/python scripts/pdf2epub.py 1-intro.pdf 2-junction.pdf course.epub --title "Course" --authors "First Last"
 ```
 
-Opzioni:
+Options:
 
-- `--title`, `--authors "A;B"`, `--publisher`, `--lang it|en|…`: metadati. Se non li indichi,
-  vengono presi dal PDF o ricavati dalla prima pagina.
-- `--pages 59-86`: converte solo un intervallo di pagine.
-- `--slides` / `--pages-mode`: forzano la modalità, che di solito è rilevata da sola.
-- `--report report.json`: salva il resoconto della conversione.
+- `--title`, `--authors "A;B"`, `--publisher`, `--lang it|en|…`: metadata. When omitted,
+  they are taken from the PDF or derived from its first page.
+- `--pages 59-86`: convert only a page range.
+- `--slides` / `--pages-mode`: force a mode. It is normally detected automatically.
+- `--report report.json`: save the conversion report.
 
-## Cosa rileva da solo
+## What it detects on its own
 
-- **Corpo del testo e delle note.** Sono le dimensioni del carattere più frequenti, e regolano
-  rientri, titoli e dimensioni delle immagini.
-- **Testatine e piè di pagina.** Vengono tolti i numeri di pagina, le righe sulla stessa
-  linea di base del numero di pagina e le righe ripetute nei margini.
-- **Colonne.** Le pagine a due colonne si leggono colonna sinistra, poi colonna destra.
-  Titolo, abstract, figure larghe e note su tutta la pagina restano fasce a sé.
-- **Slide.** Le pagine orizzontali sono trattate come slide. Ogni casella di testo e ogni
-  figura sono lette separatamente, e le slide con lo stesso titolo («(segue)», «cont.») sono
-  unite in una sola sezione. Il Comic Sans dentro le figure viene ridisegnato in Arial.
-- **Titoli.** Si usano i segnalibri del PDF quando ci sono. Altrimenti i titoli si
-  riconoscono dal corpo maggiore o dalla numerazione in grassetto («2.1 Metodo»).
-- **Note a piè di pagina.** Diventano note EPUB3 a comparsa (`noteref` più `aside`),
-  agganciate al numerino nel testo. Sono gestite anche le note che proseguono alla pagina
-  dopo e i richiami con simboli (*, †).
-- **Formule.** Le formule in display e le tabelle diventano immagini nitide. Le formule nel
-  testo che non sono scrivibili come testo (apice e pedice sovrapposti, radici, frecce,
-  glifi senza Unicode) diventano piccole immagini allineate alla riga. Sono riconosciuti i
-  font matematici di TeX, Word (Cambria Math), MathType, STIX e Symbol.
+- **Body and footnote size.** The most frequent font sizes. They drive indents, headings
+  and image sizes.
+- **Running heads and footers.** It removes page numbers, the lines that share the page
+  number's baseline, and lines repeated in the margins.
+- **Columns.** Two-column pages are read left column first, then right column. Title,
+  abstract, wide figures and full-width footnotes stay bands of their own.
+- **Slides.** Landscape pages are treated as slides. Each text box and each figure is read
+  separately, and slides with the same title ("(cont.)", "(segue)") are merged into one
+  section. PowerPoint equations split into many text boxes are put back together. Comic
+  Sans inside figures is redrawn in Arial.
+- **Headings.** It uses the PDF bookmarks when there are any. Otherwise headings are
+  recognised by larger type or bold numbering ("2.1 Method").
+- **Footnotes.** They become EPUB3 pop-up notes (`noteref` plus `aside`), attached to the
+  reference mark in the text. Notes that continue on the next page and symbol marks
+  (*, †) are handled.
+- **Formulas.** Display formulas and tables become sharp images. Inline formulas that
+  cannot be written as text (stacked sub/superscripts, roots, arrows, glyphs without
+  Unicode) become small images aligned with the line. It recognises the math fonts of
+  TeX, Word (Cambria Math), MathType, STIX and Symbol.
 
-## Controlli nel resoconto
+## Checks in the report
 
-Lo script stampa, e salva con `--report`, un resoconto con:
+The script prints a report, and saves it with `--report`. It includes:
 
-- `math_glyphs_not_in_output`: i simboli matematici del PDF che non sono finiti né nel testo
-  né in un'immagine. Dovrebbe essere 0 o quasi; in `pages_with_lost_math` ci sono le pagine
-  da controllare.
-- `footnotes`, `footnotes_without_reference`: le note trovate e quelle senza richiamo nel
-  testo.
-- `two_column_pages`, `running_heads`, `body_pt`, `note_pt`, `mode`: cosa ha rilevato
-  l'analisi.
+- `math_glyphs_not_in_output`: math symbols of the PDF that ended up neither in the text
+  nor in an image. It should be 0 or close to it; `pages_with_lost_math` lists the pages
+  to check.
+- `footnotes`, `footnotes_without_reference`: the notes found and those with no
+  reference mark in the text.
+- `two_column_pages`, `running_heads`, `body_pt`, `note_pt`, `mode`: what the analysis
+  detected.
 
-## Altri script
+## Other scripts
 
-- `scripts/md2epub.py`: dispense scritte in Markdown leggero con LaTeX, convertite in EPUB
-  con formule MathML (usa `tex2mathml.py`).
-- `scripts/slides_extract.py`: ritaglio manuale delle figure dalle slide, con correzioni
-  in `slides/overrides_pt.json`.
-- `scripts/web2epub.py`: pagine web convertite in EPUB.
-- `tests/make_twocol_sample.py`: genera un articolo sintetico a due colonne (note, formule,
-  figura) per provare il convertitore.
+- `scripts/md2epub.py`: lecture notes written in light Markdown with LaTeX, converted to
+  EPUB with MathML formulas (uses `tex2mathml.py`).
+- `scripts/slides_extract.py`: manual figure cropping from slides, with corrections in
+  `slides/overrides_pt.json`.
+- `scripts/web2epub.py`: web pages converted to EPUB.
+- `tests/make_twocol_sample.py`: generates a synthetic two-column article (footnotes,
+  formulas, a figure) to test the converter.
 
-## Limiti
+## Limits
 
-- Le formule restano immagini, non MathML.
-- I PDF scansionati (immagini senza testo) richiedono prima un passaggio di OCR.
-- Con impaginazioni molto particolari conviene controllare il resoconto e le pagine che
-  segnala.
+- Formulas stay images, not MathML.
+- Scanned PDFs (images with no text) need an OCR pass first.
+- For very unusual layouts, check the report and the pages it points to.

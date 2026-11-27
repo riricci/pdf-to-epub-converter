@@ -294,7 +294,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("epub")
     ap.add_argument("urls", nargs="*")
-    ap.add_argument("--list", help="file with one entry per line: 'URL|Titolo' or '=N Titolo' "
+    ap.add_argument("--list", help="file with one entry per line: 'URL|Title' or '=N Title' "
                                    "(a heading of level N; the pages after it go one level below)")
     ap.add_argument("--title", required=True)
     ap.add_argument("--author", default="edutecnica.it")
@@ -315,7 +315,7 @@ def main():
             blocks.append({"kind": "h", "level": lvl, "title": m.group(2).strip(), "split": True})
             base = lvl + 1
             continue
-        url, _, given_title = arg.partition("|")  # "URL|Titolo" sets the chapter title
+        url, _, given_title = arg.partition("|")  # "URL|Title" sets the chapter title
         raw = fetch(url, a.cache)
         soup = BeautifulSoup(raw, "lxml", from_encoding=None)
         # folder + file name: two pages may share a file name (cm/campo.htm, campo/campo.htm)
@@ -331,7 +331,7 @@ def main():
         pb = page_blocks(main_div, title, base)
         blocks += pb
         n_img = len([k for k in images if k.startswith(slug + "_")])
-        print(f"{title}: {sum(1 for b in pb if b['kind'] == 'h')} titoli, {n_img} immagini")
+        print(f"{title}: {sum(1 for b in pb if b['kind'] == 'h')} headings, {n_img} images")
 
     import pdf2epub
     pdf2epub.CSS += CSS_EXTRA
@@ -340,9 +340,9 @@ def main():
                                                 "publisher": "edutecnica.it", "date": time.strftime("%Y"),
                                                 "nav_depth": 4})
     size = os.path.getsize(a.epub)
-    print(f"\n{a.epub}: {sum(1 for e in entries if not e.startswith('='))} pagine, {len(images)} immagini, {size / 1e6:.1f} MB")
+    print(f"\n{a.epub}: {sum(1 for e in entries if not e.startswith('='))} pages, {len(images)} images, {size / 1e6:.1f} MB")
     for r in report:
-        print("ATTENZIONE:", r)
+        print("WARNING:", r)
 
 
 if __name__ == "__main__":

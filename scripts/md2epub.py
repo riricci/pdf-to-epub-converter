@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Dispense in Markdown leggero + LaTeX -> EPUB3 con formule in MathML.
+"""Lecture notes in light Markdown + LaTeX -> EPUB3 with MathML formulas.
 
-Sintassi delle sorgenti (slides/src/*.md):
-  # Capitolo / ## Sezione / ### Sottosezione / #### Paragrafo
-  testo con $formula$ in linea, **grassetto**, *corsivo*
-  $$ formula in display $$   (anche su più righe, anche \\begin{aligned}...)
-  - elenco puntato          1. elenco numerato
-  | a | b | c |             tabella (la prima riga è l'intestazione)
-  > riquadro                (il contenuto segue la stessa sintassi)
-  @fig ID [ID ...] | didascalia   (ID = nome del PNG in --figdir, senza estensione)
+Source syntax (slides/src/*.md):
+  # Chapter / ## Section / ### Subsection / #### Paragraph
+  text with inline $formula$, **bold**, *italic*
+  $$ display formula $$      (may span lines, may use \\begin{aligned}...)
+  - bullet list             1. numbered list
+  | a | b | c |             table (the first row is the header)
+  > box                     (its content follows the same syntax)
+  @fig ID [ID ...] | caption   (ID = PNG name in --figdir, without extension)
 
-Uso: md2epub.py OUT.epub src1.md [src2.md ...] --title T --author A [--subtitle S]
+Usage: md2epub.py OUT.epub src1.md [src2.md ...] --title T --author A [--subtitle S]
 """
 import argparse
 import html
@@ -50,7 +50,7 @@ FIG_MAX_W = 1300
 
 
 def tex_plain(t):
-    """testo con formule -> testo semplice (indice, alt delle immagini)"""
+    """text with formulas -> plain text (table of contents, image alt text)"""
     def conv(m):
         x = m.group(1)
         x = re.sub(r"\\(" + "|".join(sorted(GREEK, key=len, reverse=True)) + r")(?![A-Za-z])", lambda g: GREEK[g.group(1)], x)
@@ -108,7 +108,7 @@ class Book:
         imgs = []
         for fid in ids:
             name, w = self.image(fid)
-            # larghezza in em: circa 1 em ogni 16 px di una slide resa a 2,5x (1 pt ≈ 2,5 px)
+            # width in em: about 1 em per 16 px of a slide rendered at 2.5x (1 pt ≈ 2.5 px)
             em = min(w / 2.5 / 12, 40)
             imgs.append(f'<img src="img/{name}" alt="{html.escape(tex_plain(caption) or fid, quote=True)}" style="width:{em:.1f}em"/>')
         cls = "fig multi" if len(imgs) > 1 else "fig"
@@ -118,7 +118,7 @@ class Book:
         return h
 
     def parse(self, lines):
-        """restituisce una lista di blocchi html (e aggiunge i titoli a self.blocks)"""
+        """return a list of html blocks (and add the headings to self.blocks)"""
         out = []
         i = 0
         para = []
@@ -249,7 +249,7 @@ def main():
     nh = sum(1 for b in book.blocks if b["kind"] == "h")
     nm = sum(b["html"].count("<math") for b in book.blocks if b["kind"] == "x") + \
         sum(b["html"].count("<math") for b in book.blocks if b["kind"] == "h")
-    print(f"{a.epub}: {size/1e6:.1f} MB, {nh} titoli, {nm} formule, {len(book.images)} figure")
+    print(f"{a.epub}: {size/1e6:.1f} MB, {nh} headings, {nm} formulas, {len(book.images)} figures")
 
 
 if __name__ == "__main__":
