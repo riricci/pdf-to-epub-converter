@@ -249,16 +249,20 @@ def page_lines(page, report, pno):
                 if c == "\xad":
                     c = "-"            # soft hyphen drawn as a hyphen
                 elif wing or 0xF000 <= ord(c) <= 0xF0FF:
-                    c = "\u2022"            # symbol-font bullets
+                    c = c if c.isspace() else wingding(c, not chars or all(x.c.isspace() for x in chars))
                 elif ord(c) < 32 or c == "\ufffd" or 0xD800 <= ord(c) <= 0xDFFF or \
                         (c in '!"#$' and is_symbolic(s["font"])):   # math glyphs without unicode (Cambria Math)
                     c = PLACEHOLDER  # unmapped glyph; forces display rendering
                 chars.append(Char(c, tuple(ch["bbox"]), s["size"], s["font"],
                                   s["flags"], ch["origin"][1]))
+        if chars and all(ch.c in '!"# ' + PLACEHOLDER for ch in chars) and \
+                any("Cambria" in s["font"] and not is_math_font(s["font"]) for s in l["spans"]):
+            continue      # stray unmapped glyph (punctuation) left by a Word/PowerPoint equation
         if chars and any(not ch.c.isspace() for ch in chars):
             ln = Line(chars, tuple(l["bbox"]))
             if ln.bbox[3] <= PF.header_y or ln.bbox[1] >= PF.footer_y or \
-                    ln.bbox[1] < PF.header_y - 0.5 * PF.body or ln.bbox[3] > PF.footer_y + 0.5 * PF.body:
+                    (ln.bbox[1] < PF.header_y and ln.bbox[3] < PF.header_y + 0.5 * PF.body) or \
+                    (ln.bbox[3] > PF.footer_y and ln.bbox[1] >= PF.footer_y - 1):
                 continue
             if in_band(ln.bbox, h):
                 t = ln.text.strip()
@@ -266,6 +270,16 @@ def page_lines(page, report, pno):
                     continue  # running head, footer, page number
             out.append(ln)
     return out
+
+
+def wingding(c, at_start):
+    """Wingdings/Webdings glyph -> Unicode: arrows stay arrows, the rest are bullets."""
+    k = ord(c) & 0xFF
+    if 0xD5 <= k <= 0xF0 and not (at_start and k == 0xD8):
+        return "⇒" if not at_start else "➢ "
+    if k in (0xFB, 0xFC, 0xFE):
+        return "✓ " if at_start else "✓"
+    return "• " if at_start else "•"
 
 
 def analyze(doc, pages=None):
@@ -780,6 +794,11 @@ def graphic_rects(page):
     # together with label text set in non-text fonts (Arial, Helvetica, Type3...)
     draws = [tuple(d["rect"]) for d in page.get_drawings()
              if keep(tuple(d["rect"])) and not (d.get("fill") == (1.0, 1.0, 1.0) and not d.get("color"))]
+    # isolated thin rules (fraction bars, underlines) are not figures
+    thin = [d for d in draws if min(d[2] - d[0], d[3] - d[1]) <= 3]
+    lone = [d for d in thin if not any(o is not d and touches(d, o, 6) for o in draws)]
+    draws = [d for d in draws if d not in lone]
+    real = list(draws)
     if draws:
         for b in page.get_text("dict")["blocks"]:
             for l in b.get("lines", []):
@@ -788,13 +807,18 @@ def graphic_rects(page):
                     continue
                 if slide_prose(txt, max(s["size"] for s in l["spans"])):
                     continue
+                if PF.slides and all(is_math_font(s["font"]) for s in l["spans"] if s["text"].strip()):
+                    continue      # formula pieces (and their fraction bars) are equations, not figures
                 if all(is_label_font(s["font"]) for s in l["spans"] if s["text"].strip()) \
                         or l["dir"][0] < 0.9 or (PF.slides and len(txt) <= 10):
                     draws.append(tuple(l["bbox"]))
         for r in merge_rects(draws, 12 if not PF.slides else 6):
+            if PF.slides and not any(area_overlap(d, r) > 0 or touches(d, r, 0) and d[0] >= r[0] - 0.1 and d[2] <= r[2] + 0.1
+                       for d in real):
+                continue      # only labels, no drawing: that is text
             if r[2] - r[0] >= MIN_FIG_W and r[3] - r[1] >= 15:
                 comps.append(r)
-    regions, bars = [], []
+    regions, bars = [], list(lone)
     for r in comps:
         w, h = r[2] - r[0], r[3] - r[1]
         if w >= MIN_FIG_W and h >= MIN_FIG_H:
@@ -865,16 +889,39 @@ def slide_regions(page, figs):
     import functools
     fboxes = merge_rects([tuple(f) for f in figs], -1)
     boxes = list(fboxes)
-    tb = []
+    tb, mb = [], []
     for b in page.get_text("dict")["blocks"]:
         if b["type"] != 0 or not "".join(s["text"] for l in b["lines"] for s in l["spans"]).strip():
             continue
         r = tuple(b["bbox"])
+        n = sum(len(s["text"].strip()) for l in b["lines"] for s in l["spans"])
+        nm = sum(len(s["text"].strip()) for l in b["lines"] for s in l["spans"] if is_math_font(s["font"]))
+        if nm >= 0.6 * max(n, 1):
+            mb.append(r)      # PowerPoint splits one equation into many small text boxes
+            continue
         a = max(1e-3, (r[2] - r[0]) * (r[3] - r[1]))
         if any(area_overlap(r, f) > 0.6 * a for f in boxes):
             continue
         tb.append(r)
     boxes += merge_rects(tb, 1)
+    mboxes = []
+    for m in merge_rects(mb, 0.7 * PF.body):
+        m = (m[0] - 3, m[1] - 3, m[2] + 3, m[3] + 3)      # fraction bars sit on the edge
+        a = max(1e-3, (m[2] - m[0]) * (m[3] - m[1]))
+        if not any(area_overlap(m, f) > 0.6 * a for f in fboxes):
+            mboxes.append(m)
+    # vector pieces of a formula (drawn brackets, overlines) belong to the formula
+    for f in list(fboxes):
+        fa = max(1e-3, (f[2] - f[0]) * (f[3] - f[1]))
+        for k, m in enumerate(mboxes):
+            ma = (m[2] - m[0]) * (m[3] - m[1])
+            if area_overlap(f, m) > 0.5 * fa or (touches(f, m, 0.4 * PF.body) and fa < 1.5 * ma
+                                                 and f[1] > m[1] - 0.5 * PF.body and f[3] < m[3] + 0.5 * PF.body):
+                mboxes[k] = rect_union(m, f)
+                fboxes.remove(f)
+                boxes.remove(f)
+                break
+    boxes += mboxes
 
     def order(a, b):
         ov = min(a[3], b[3]) - max(a[1], b[1])
@@ -882,7 +929,7 @@ def slide_regions(page, figs):
             return -1 if a[0] < b[0] else 1
         return -1 if a[1] < b[1] else 1
     boxes.sort(key=functools.cmp_to_key(order))
-    return [(b, "fig" if b in fboxes else "box", max(b[2] - b[0], 1)) for b in boxes]
+    return [(b, "fig" if b in fboxes else "math" if b in mboxes else "box", max(b[2] - b[0], 1)) for b in boxes]
 
 
 def column_regions(page, lines, figs):
@@ -1079,11 +1126,17 @@ class Converter:
                         if side == kind and rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3]:
                             return k
                 return len(cols) - 1
-            own = {id(l): owner(l.bbox, ("box", "fig")) for l in lines}
-            own.update({id(g): owner(g, ("fig", "box")) for g in g_regions + g_bars})
+            maths = [c[0] for c in cols if c[1] == "math"]
+            for g in list(g_regions):     # drawn brackets/overlines of a formula: fraction-bar like
+                ga = max(1e-3, (g[2] - g[0]) * (g[3] - g[1]))
+                if any(area_overlap(g, m) > 0.5 * ga for m in maths):      # (math boxes include them)
+                    g_regions.remove(g)
+                    g_bars.append(g)
+            own = {id(l): owner(l.bbox, ("box", "math", "fig")) for l in lines}
+            own.update({id(g): owner(g, ("fig", "math", "box")) for g in g_regions + g_bars})
             # running text is never part of a picture
             for l in lines:
-                if cols[own[id(l)]][1] == "box" or slide_prose(l.text, line_base(l.chars)[0]):
+                if cols[own[id(l)]][1] in ("box", "math") or slide_prose(l.text, line_base(l.chars)[0]):
                     self.prose_rects[pno] += [(c.bbox, c.oy, c.size) for c in l.chars if c.c.strip()]
         for k, (rect, side, width) in enumerate(cols):
             def inside(b, line=None):
@@ -1101,13 +1154,13 @@ class Converter:
             if not sub and not regs:
                 continue
             COL["w"] = width
-            its = self.region_items(pno, page, sub, regs, bars)
+            its = self.region_items(pno, page, sub, regs, bars, rect if side == "math" else None)
             for it in its:
                 it.region = k
             items += its
         return items
 
-    def region_items(self, pno, page, lines, regions, bars):
+    def region_items(self, pno, page, lines, regions, bars, math_rect=None):
         lines, notes, cont = split_footnotes(lines, page.rect.height)
         if cont and self.last_note is not None and self.last_note["page"] == pno \
                 and not re.search(r"[.!?;)]\s*$", "".join(c.c for c in self.last_note["rows"][-1][1].lines[-1].chars)) \
@@ -1244,6 +1297,8 @@ class Converter:
                         g.append(r)
                         reg = rect_union(reg, r.bbox)
                         changed = True
+            if math_rect is not None:     # a whole formula box (slides): keep drawn brackets, overlines
+                reg = rect_union(reg, math_rect)
             items.append(self.img_item(pno, reg, "eq", alt=" ".join(plain(r) for r in g)))
 
         emitted = set()
