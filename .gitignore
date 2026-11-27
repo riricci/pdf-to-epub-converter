@@ -1,0 +1,15 @@
+# copyrighted sources and everything derived from them
+*.pdf
+*.epub
+slides/
+web/
+work/
+out/
+
+# environment
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/settings.local.json
+.claude/
